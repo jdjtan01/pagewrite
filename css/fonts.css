@@ -1,0 +1,9 @@
+/* Self-hosted fonts (Latin subset), from the Fontsource packages. All are under the SIL Open Font License. */
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:200 800;font-display:swap;src:url(../fonts/bricolage-grotesque-latin-wght-normal.woff2) format("woff2")}
+@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:400;font-display:swap;src:url(../fonts/instrument-sans-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:500;font-display:swap;src:url(../fonts/instrument-sans-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:600;font-display:swap;src:url(../fonts/instrument-sans-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:400;font-display:swap;src:url(../fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:500;font-display:swap;src:url(../fonts/jetbrains-mono-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"Caveat";font-style:normal;font-weight:600;font-display:swap;src:url(../fonts/caveat-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"Allura";font-style:normal;font-weight:400;font-display:swap;src:url(../fonts/allura-latin-400-normal.woff2) format("woff2")}

@@ -1,11 +1,14 @@
 (() => {
 'use strict';
 const pdfjsLib = window.pdfjsLib;
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
 const { PDFDocument, StandardFonts, rgb, degrees, BlendMode, LineCapStyle } = PDFLib;
 
 /* ---------- icons ---------- */
 const IC = {
+  redact:'M4 5h16v14H4zM7 12h10',
+  shape:'M4 4h9v9H4zM11 11h9v9h-9z',
+  stamp:'M7 14h10l1 4H6zM12 4a3 3 0 013 3c0 2-1 3-1 5h-4c0-2-1-3-1-5a3 3 0 013-3z',
   select:'M5 3l13 7-6 1.6L9 18z',
   edit:'M4 7V5h11v2M9.5 5v13M7 18h5M14 15l6-6 2 2-6 6h-2z',
   text:'M5 6V4h14v2M12 4v16M9 20h6',
@@ -40,11 +43,12 @@ const S = {
   selPages: new Set(), cur: 0, docName: 'sample-form', isSample: true, flatten: false,
   tdef: { font: 'Arial', size: 12, color: '#111111', bold: false },
   ink: '#1d3fa6', inkW: 2, hl: '#ffe14d', checkMark: 'check', checkSize: 14, checkColor: '#111111',
-  fieldType: 'text', radioGroup: null,
+  shape: 'rect', stamp: 0, fieldType: 'text', radioGroup: null,
   undo: [], redo: []
 };
 const FONT_CSS = { Arial: 'Arial, Helvetica, sans-serif', Helvetica: 'Helvetica, Arial, sans-serif', 'Times New Roman': '"Times New Roman", Times, serif', Times: 'Times, "Times New Roman", serif', 'Courier New': '"Courier New", Courier, monospace', Courier: 'Courier, "Courier New", monospace' };
 const INKS = ['#111111', '#1d3fa6', '#b42318', '#1f7a4d'];
+const STAMPS = [['APPROVED', '#1f7a4d'], ['PAID', '#1f7a4d'], ['REVIEWED', '#1d3fa6'], ['DRAFT', '#6b7280'], ['CONFIDENTIAL', '#b42318'], ['REJECTED', '#b42318'], ['VOID', '#b42318']];
 const HLS = ['#ffe14d', '#9cf29a', '#9fd8ff', '#ffb3d9'];
 let uidN = 1; const nid = () => 'n' + (uidN++).toString(36) + Math.random().toString(36).slice(2, 6);
 const $ = (s, r = document) => r.querySelector(s);
@@ -198,8 +202,8 @@ function rebuild() { buildStage(); buildThumbs(); renderInspector(); syncUndo();
 function buildStage() {
   io.disconnect(); stageInner.innerHTML = ''; pageEls.clear();
   if (!S.pages.length) {
-    const fresh = !S.sources.length; const e = el('div', 'empty'); e.innerHTML = fresh ? `<div class="dz"><h3>Open a PDF to get started</h3><p class="note">Drop a PDF or images anywhere on this page. Fill forms, sign, edit text and rearrange pages, then export.</p><div class="btnrow" style="justify-content:center"><button class="btn primary" id="emptyOpen">Open a PDF or images</button><button class="btn" id="emptySample">Try a sample form</button></div></div>` : `<div class="card" style="max-width:340px;text-align:center;align-items:center"><h3>No pages left</h3><p class="note">Open a PDF, drop files here, or add a blank page from the Pages panel.</p><button class="btn primary" id="emptyOpen">Open a file</button></div>`;
-    stageInner.append(e); $('#emptyOpen').onclick = () => $('#fOpen').click(); const sb = $('#emptySample'); if (sb) sb.onclick = loadSample; return;
+    const fresh = !S.sources.length; const e = el('div', 'empty'); e.innerHTML = fresh ? `<div class="dz"><h3>Open a PDF to get started</h3><p class="note">Drop a PDF or images anywhere on this page. Fill forms, sign, edit text and rearrange pages, then export.</p><div class="btnrow" style="justify-content:center"><button class="btn primary" id="emptyOpen">Open a PDF or images</button><button class="btn" id="emptySample">Try a sample form</button><button class="btn" id="emptyRestore" hidden></button></div></div>` : `<div class="card" style="max-width:340px;text-align:center;align-items:center"><h3>No pages left</h3><p class="note">Open a PDF, drop files here, or add a blank page from the Pages panel.</p><button class="btn primary" id="emptyOpen">Open a file</button></div>`;
+    stageInner.append(e); $('#emptyOpen').onclick = () => $('#fOpen').click(); const sb = $('#emptySample'); if (sb) sb.onclick = loadSample; const rb = $('#emptyRestore'); if (rb && lastSession) { rb.hidden = false; rb.textContent = 'Restore ' + lastSession.docName + '.pdf (' + new Date(lastSession.t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + ')'; rb.onclick = restoreSession; } return;
   }
   const z = S.zoom;
   S.pages.forEach((p, i) => {
@@ -323,6 +327,15 @@ function syncField(key, src) {
 }
 
 /* ---------- annotations ---------- */
+function lineGeom(a) { const fx = a.flipX, fy = a.flipY; return { x1: fx ? a.w : 0, y1: fy ? a.h : 0, x2: fx ? 0 : a.w, y2: fy ? 0 : a.h }; }
+function headSegs(x1, y1, x2, y2, sw) { const ang = Math.atan2(y2 - y1, x2 - x1), L = 5 + sw * 3; return [-1, 1].map(k => [x2, y2, x2 - L * Math.cos(ang + k * .45), y2 - L * Math.sin(ang + k * .45)]); }
+function shapeSvg(a) {
+  const w = Math.max(a.w, .1), h = Math.max(a.h, .1), sw = a.width, st = `fill="none" stroke="${a.color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"`; let g = '';
+  if (a.kind === 'rect') g = `<rect x="${sw / 2}" y="${sw / 2}" width="${Math.max(w - sw, 0)}" height="${Math.max(h - sw, 0)}" ${st}/>`;
+  else if (a.kind === 'ellipse') g = `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${Math.max((w - sw) / 2, 0)}" ry="${Math.max((h - sw) / 2, 0)}" ${st}/>`;
+  else { const { x1, y1, x2, y2 } = lineGeom(a); g = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${st}/>`; if (a.kind === 'arrow') g += headSegs(x1, y1, x2, y2, sw).map(q => `<line x1="${q[0]}" y1="${q[1]}" x2="${q[2]}" y2="${q[3]}" ${st}/>`).join(''); }
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="overflow:visible">${g}</svg>`;
+}
 function annotEl(a) {
   const z = S.zoom, d = el('div', 'annot t-' + a.type); d.dataset.id = a.id;
   d.style.left = a.x * z + 'px'; d.style.top = a.y * z + 'px';
@@ -337,6 +350,7 @@ function annotEl(a) {
     case 'draw': {
       const pts = a.pts.map(q => q.join(',')).join(' ');
       d.innerHTML = `<svg viewBox="0 0 ${Math.max(a.w, .1)} ${Math.max(a.h, .1)}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${a.color}" stroke-width="${a.width}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" style="stroke-width:${a.width * z}px"/></svg>`; break; }
+    case 'shape': d.innerHTML = shapeSvg(a); break;
     case 'check':
       d.innerHTML = `<svg viewBox="0 0 24 24">${a.mark === 'dot' ? `<circle cx="12" cy="12" r="6" fill="${a.color}"/>` : `<path d="${a.mark === 'cross' ? 'M5 5l14 14M19 5L5 19' : 'M4 12.5l5 5L20 6.5'}" fill="none" stroke="${a.color}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`}</svg>`; break;
     case 'field': fieldEl(d, a); break;
@@ -434,11 +448,17 @@ stage.addEventListener('pointerdown', e => {
       const a = Object.assign({ type: 'field', x: pt.x, y: pt.y, w: 0, h: 0 }, fieldDefaults(S.fieldType));
       addAnnot(p, a, false);
       drag = { kind: 'rect', p, a, x0: pt.x, y0: pt.y, before, id: e.pointerId }; stage.setPointerCapture(e.pointerId); break; }
-    case 'white': case 'hl': {
+    case 'white': case 'hl': case 'redact': {
       const before = snap();
-      const a = { type: S.tool, x: pt.x, y: pt.y, w: 0, h: 0, color: S.tool === 'hl' ? S.hl : sampleBg(p, pt.x, pt.y), opacity: S.tool === 'hl' ? .45 : 1 };
+      const a = { type: S.tool === 'redact' ? 'white' : S.tool, x: pt.x, y: pt.y, w: 0, h: 0, color: S.tool === 'hl' ? S.hl : S.tool === 'redact' ? '#000000' : sampleBg(p, pt.x, pt.y), opacity: S.tool === 'hl' ? .45 : 1, ...(S.tool === 'redact' ? { redact: true } : {}) };
       addAnnot(p, a, false);
       drag = { kind: 'rect', p, a, x0: pt.x, y0: pt.y, before, id: e.pointerId }; stage.setPointerCapture(e.pointerId); break; }
+    case 'shape': {
+      const before = snap();
+      const a = { type: 'shape', kind: S.shape, x: pt.x, y: pt.y, w: 0, h: 0, color: S.ink, width: S.inkW };
+      addAnnot(p, a, false);
+      drag = { kind: 'rect', p, a, x0: pt.x, y0: pt.y, before, id: e.pointerId }; stage.setPointerCapture(e.pointerId); break; }
+    case 'stamp': { checkpoint(); const [t, c] = STAMPS[S.stamp] || STAMPS[0]; addAnnot(p, { type: 'text', text: t, x: pt.x - 50, y: pt.y - 14, font: 'Arial', size: 26, bold: true, color: c }); setTool('select'); break; }
     case 'draw': {
       const before = snap();
       const a = { type: 'draw', x: pt.x, y: pt.y, w: 0, h: 0, pts: [[pt.x, pt.y]], color: S.ink, width: S.inkW };
@@ -476,8 +496,9 @@ stage.addEventListener('pointermove', e => {
     }
     renderAnnots(p);
   } else if (drag.kind === 'rect') {
-    a.x = Math.min(pt.x, drag.x0); a.y = Math.min(pt.y, drag.y0); a.w = Math.abs(pt.x - drag.x0); a.h = Math.abs(pt.y - drag.y0);
+    a.x = Math.min(pt.x, drag.x0); a.y = Math.min(pt.y, drag.y0); a.w = Math.abs(pt.x - drag.x0); a.h = Math.abs(pt.y - drag.y0); a.flipX = pt.x < drag.x0; a.flipY = pt.y < drag.y0;
     const d = annotDom(a.id); Object.assign(d.style, { left: a.x * S.zoom + 'px', top: a.y * S.zoom + 'px', width: a.w * S.zoom + 'px', height: a.h * S.zoom + 'px' });
+    if (a.type === 'shape') d.innerHTML = shapeSvg(a);
   } else if (drag.kind === 'draw') {
     const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     for (const ev of evs) { const q = ptFromEvent(p, ev); drag.abs.push([q.x, q.y]); }
@@ -496,7 +517,7 @@ function endDrag(e) {
     else if (sq) a.w = a.h = Math.max(a.w, a.h);
     S.undo.push(d.before); S.redo = []; syncUndo(); renderAnnots(d.p); select(d.p, a);
   } else if (d.kind === 'rect') {
-    if (d.a.w < 3 || d.a.h < 3) { d.p.annots = d.p.annots.filter(x => x !== d.a); renderAnnots(d.p); }
+    if (d.a.type === 'shape' && (d.a.kind === 'line' || d.a.kind === 'arrow') ? Math.hypot(d.a.w, d.a.h) < 4 : (d.a.w < 3 || d.a.h < 3)) { d.p.annots = d.p.annots.filter(x => x !== d.a); renderAnnots(d.p); }
     else { S.undo.push(d.before); S.redo = []; syncUndo(); select(d.p, d.a); }
   } else if (d.kind === 'draw') {
     d.sv.remove();
@@ -578,7 +599,7 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------- tools ---------- */
-const KEYTOOLS = { v: 'select', e: 'edit', t: 'text', w: 'white', h: 'hl', d: 'draw', c: 'check', k: 'date' };
+const KEYTOOLS = { v: 'select', e: 'edit', t: 'text', w: 'white', h: 'hl', d: 'draw', c: 'check', k: 'date', r: 'redact', s: 'shape', m: 'stamp' };
 const TOOLKEY = Object.fromEntries(Object.entries(KEYTOOLS).map(([k, t]) => [t, k.toUpperCase()]));
 const TOOLS = [
   ['select', 'Select', 'Select, move and fill form fields'],
@@ -588,8 +609,11 @@ const TOOLS = [
   ['sign', 'Sign', 'Draw, type or upload a signature'],
   ['image', 'Image', 'Place a PNG or JPG on the page'],
   ['white', 'Whiteout', 'Drag to cover content'],
+  ['redact', 'Redact', 'Drag to permanently remove content'],
   ['hl', 'Highlight', 'Drag to highlight'],
   ['draw', 'Draw', 'Freehand pen'],
+  ['shape', 'Shape', 'Rectangle, ellipse, line or arrow'],
+  ['stamp', 'Stamp', 'Approved, Draft, Paid and other stamps'],
   ['check', 'Check', 'Click to place a check mark'],
   ['date', 'Date', 'Click to stamp today\'s date']
 ];
@@ -774,6 +798,7 @@ function renderInspector() {
     if (a.type === 'white') h += `<div class="field"><span class="lbl">Fill</span>${swatchRow(['#ffffff', '#f5f5f0', '#111111'], a.color, 'color')}</div><p class="note">Whiteout hides content visually. The original text is still inside the file, so don't use it to redact sensitive data.</p>`;
     if (a.type === 'hl') h += `<div class="field"><span class="lbl">Colour</span>${swatchRow(HLS, a.color, 'color')}</div>`;
     if (a.type === 'draw') h += `<div class="field"><span class="lbl">Colour</span>${swatchRow(INKS, a.color, 'color')}</div><div class="field"><label for="iW">Line width (pt)</label><input class="inp" id="iW" type="number" min=".5" max="20" step=".5" value="${a.width}" data-act="width"></div>`;
+    if (a.type === 'shape') h += `<div class="field"><span class="lbl">Colour</span>${swatchRow(INKS, a.color, 'color')}</div>`;
     if (a.type === 'image') h += `<div class="field"><label for="iOp">Opacity</label><input id="iOp" type="range" min="0.1" max="1" step="0.05" value="${a.opacity ?? 1}" data-act="opacity"></div>`;
     if (a.type === 'check') h += `<div class="field"><label for="iMark">Mark</label><select class="inp" id="iMark" data-act="mark"><option value="check" ${a.mark === 'check' ? 'selected' : ''}>✓ Check</option><option value="cross" ${a.mark === 'cross' ? 'selected' : ''}>✕ Cross</option><option value="dot" ${a.mark === 'dot' ? 'selected' : ''}>● Dot</option></select></div><div class="field"><span class="lbl">Colour</span>${swatchRow(INKS, a.color, 'color')}</div>`;
     if (a.type === 'field') {
@@ -799,8 +824,14 @@ function renderInspector() {
     title = 'Draw'; h += `<div class="card"><div class="field"><span class="lbl">Ink</span>${swatchRow(INKS, S.ink, 'ink')}</div><div class="field"><label for="dW">Line width (pt)</label><input class="inp" id="dW" type="number" min=".5" max="20" step=".5" value="${S.inkW}" data-act="inkW"></div></div>`;
   } else if (S.tool === 'hl') {
     title = 'Highlight'; h += `<div class="card"><p class="note">Drag across text to highlight it.</p><div class="field"><span class="lbl">Colour</span>${swatchRow(HLS, S.hl, 'hlc')}</div></div>`;
+  } else if (S.tool === 'shape') {
+    title = 'Shape'; h += `<div class="card"><div class="field"><label for="shK">Shape</label><select class="inp" id="shK" data-act="shapeKind">${[['rect', 'Rectangle'], ['ellipse', 'Ellipse'], ['line', 'Line'], ['arrow', 'Arrow']].map(([v, l]) => `<option value="${v}"${S.shape === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div><div class="field"><span class="lbl">Colour</span>${swatchRow(INKS, S.ink, 'ink')}</div><div class="field"><label for="dW">Line width (pt)</label><input class="inp" id="dW" type="number" min=".5" max="20" step=".5" value="${S.inkW}" data-act="inkW"></div></div>`;
+  } else if (S.tool === 'stamp') {
+    title = 'Stamp'; h += `<div class="card"><p class="note">Pick a stamp, then click on the page. It is placed as bold text you can move, resize and recolour.</p><div class="field"><label for="stS">Stamp</label><select class="inp" id="stS" data-act="stampPick">${STAMPS.map(([t], i) => `<option value="${i}"${S.stamp === i ? ' selected' : ''}>${t}</option>`).join('')}</select></div></div>`;
+  } else if (S.tool === 'redact') {
+    title = 'Redact'; h += `<div class="card"><p class="note">Drag a box over anything that must be gone for good. When you export a PDF, each page with a redaction is converted to a flat image with the box burned in, so the text underneath is removed from the file. Those pages lose selectable text and form fields.</p></div>`;
   } else if (S.tool === 'white') {
-    title = 'Whiteout'; h += `<div class="card"><p class="note">Drag a box over anything you want to cover. The fill matches the page colour where you start. Add new text on top with Add text.</p></div>`;
+    title = 'Whiteout'; h += `<div class="card"><p class="note">Drag a box over anything you want to cover. The fill matches the page colour where you start. Add new text on top with Add text. This only covers the content visually: the text underneath stays in the file. Use Redact to remove it.</p></div>`;
   } else if (S.tool === 'check') {
     title = 'Check mark'; h += `<div class="card"><div class="field"><label for="cMark">Mark</label><select class="inp" id="cMark" data-act="cmark"><option value="check">✓ Check</option><option value="cross">✕ Cross</option><option value="dot">● Dot</option></select></div><div class="field"><label for="cSize">Size (pt)</label><input class="inp" id="cSize" type="number" min="6" max="60" value="${S.checkSize}" data-act="csize"></div></div>`;
   } else if (S.tool === 'edit') {
@@ -840,6 +871,8 @@ function inspHandler(e) {
   // tool defaults
   const tdefActs = { font: 1, size: 1, bold: 1, color: 1 };
   if (!g && (S.tool === 'text' || S.tool === 'date') && tdefActs[act]) { S.tdef[act] = act === 'size' ? clamp(+val || 12, 4, 144) : val; if (isClick) renderInspector(); return; }
+  if (act === 'shapeKind') { S.shape = val; return; }
+  if (act === 'stampPick') { S.stamp = +val || 0; return; }
   if (act === 'ink') { S.ink = val; renderInspector(); return; }
   if (act === 'inkW') { S.inkW = clamp(+val || 2, .5, 20); return; }
   if (act === 'hlc') { S.hl = val; renderInspector(); return; }
@@ -1111,6 +1144,11 @@ async function drawAnnots(doc, page, p, fonts, imgCache, fctx) {
         const im = S.imgs[a.img]; if (!im) continue;
         let e = imgCache[a.img]; if (!e) e = imgCache[a.img] = im.type === 'png' ? await doc.embedPng(im.bytes) : await doc.embedJpg(im.bytes);
         page.drawImage(e, { x: X(a.x), y: top - a.y - a.h, width: a.w, height: a.h, opacity: a.opacity ?? 1 });
+      } else if (a.type === 'shape') {
+        const col = hexRgb(a.color), seg = (x1, y1, x2, y2) => page.drawLine({ start: { x: X(a.x + x1), y: top - a.y - y1 }, end: { x: X(a.x + x2), y: top - a.y - y2 }, thickness: a.width, color: col, lineCap: LineCapStyle.Round });
+        if (a.kind === 'rect') page.drawRectangle({ x: X(a.x), y: top - a.y - a.h, width: a.w, height: a.h, borderColor: col, borderWidth: a.width });
+        else if (a.kind === 'ellipse') page.drawEllipse({ x: X(a.x + a.w / 2), y: top - a.y - a.h / 2, xScale: a.w / 2, yScale: a.h / 2, borderColor: col, borderWidth: a.width });
+        else { const g = lineGeom(a); seg(g.x1, g.y1, g.x2, g.y2); if (a.kind === 'arrow') headSegs(g.x1, g.y1, g.x2, g.y2, a.width).forEach(q => seg(...q)); }
       } else if (a.type === 'draw') {
         for (let i = 1; i < a.pts.length; i++) {
           const [x1, y1] = a.pts[i - 1], [x2, y2] = a.pts[i];
@@ -1124,10 +1162,17 @@ async function drawAnnots(doc, page, p, fonts, imgCache, fctx) {
     } catch (e) { console.warn('annot export', a.type, e); }
   }
 }
+async function rasterRedact(doc, p) {
+  const scale = 2.5, c = document.createElement('canvas'); c.width = Math.round(p.w * scale); c.height = Math.round(p.h * scale);
+  const ctx = c.getContext('2d'); await drawBase(p, ctx, scale);
+  ctx.fillStyle = '#000'; for (const a of p.annots) if (a.redact) ctx.fillRect(a.x * scale, a.y * scale, a.w * scale, a.h * scale);
+  const blob = await canvasBlob(c, 'image/jpeg', .9), img = await doc.embedJpg(new Uint8Array(await blob.arrayBuffer()));
+  const page = doc.addPage([p.w, p.h]); page.drawImage(img, { x: 0, y: 0, width: p.w, height: p.h }); c.width = c.height = 0; return page;
+}
 async function buildPdf(list, { flatten }) {
   const fonts = {}, imgCache = {}, fctx = { radios: {}, opts: {}, used: new Set() };
   const s0 = S.sources[0];
-  const inPlace = s0 && list === S.pages && list.length === s0.pdf.numPages && list.every((p, i) => p.kind === 'pdf' && p.src === 0 && p.idx === i);
+  const inPlace = s0 && list === S.pages && !list.some(p => p.annots.some(a => a.redact)) && list.length === s0.pdf.numPages && list.every((p, i) => p.kind === 'pdf' && p.src === 0 && p.idx === i);
   let doc;
   if (inPlace) {
     doc = await PDFDocument.load(s0.bytes, { ignoreEncryption: true });
@@ -1139,7 +1184,8 @@ async function buildPdf(list, { flatten }) {
     const libs = {};
     for (const p of list) {
       let page;
-      if (p.kind === 'pdf') {
+      if (p.annots.some(a => a.redact)) { page = await rasterRedact(doc, p); }
+      else if (p.kind === 'pdf') {
         if (!libs[p.src]) {
           const lib = await PDFDocument.load(S.sources[p.src].bytes, { ignoreEncryption: true });
           const form = fillForm(lib, p.src);
@@ -1440,8 +1486,36 @@ async function loadSample() {
   } catch (e) { console.error(e); toast('Could not load the sample: ' + e.message, 'err'); }
   finally { busy(null); }
 }
+/* autosave to IndexedDB */
+const DB = {
+  open: () => new Promise((res, rej) => { const r = indexedDB.open('pagewright', 1); r.onupgradeneeded = () => r.result.createObjectStore('s'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }),
+  async get() { const db = await DB.open(); return new Promise(res => { const q = db.transaction('s').objectStore('s').get('last'); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); },
+  async put(v) { const db = await DB.open(); return new Promise(res => { const t = db.transaction('s', 'readwrite'); if (v == null) t.objectStore('s').delete('last'); else t.objectStore('s').put(v, 'last'); t.oncomplete = () => res(true); t.onerror = () => res(false); }); }
+};
+var lastSession = null, savedKey = '';
+async function autosave() {
+  try {
+    if (!S.pages.length) { if (savedKey) { savedKey = ''; await DB.put(null); } return; }
+    if (!S.undo.length && !Object.keys(S.formVals).length) return;
+    const sn = snap(), key = sn + '|' + S.docName + '|' + S.sources.length; if (key === savedKey) return; savedKey = key;
+    await DB.put({ t: Date.now(), docName: S.docName, isSample: S.isSample, pages: JSON.parse(sn).pages, formVals: S.formVals, sources: S.sources.map(x => ({ name: x.name, bytes: x.bytes })), imgs: Object.fromEntries(Object.entries(S.imgs).map(([k, v]) => [k, { bytes: v.bytes, type: v.type, w: v.w, h: v.h }])) });
+  } catch (e) { console.warn('autosave failed', e); }
+}
+setInterval(autosave, 4000);
+async function restoreSession() {
+  const r = lastSession; if (!r) return; busy('Restoring your last session…');
+  try {
+    S.sources = []; tcCache.clear(); thumbCache.clear();
+    for (const x of r.sources) { const pdf = await pdfjsLib.getDocument({ data: x.bytes.slice(0), isEvalSupported: false }).promise; S.sources.push({ name: x.name, bytes: x.bytes, pdf }); }
+    for (const [k, v] of Object.entries(r.imgs || {})) S.imgs[k] = { ...v, url: URL.createObjectURL(new Blob([v.bytes], { type: v.type === 'png' ? 'image/png' : 'image/jpeg' })) };
+    S.pages = r.pages; S.formVals = r.formVals || {}; S.docName = r.docName; S.isSample = !!r.isSample; S.undo = []; S.redo = []; S.sel = null; S.editing = null; S.cur = 0;
+    fitZoom(); setTool('select'); rebuild();
+  } catch (e) { console.error(e); toast('Could not restore the last session.', 'err'); }
+  finally { busy(null); }
+}
 async function boot() {
   try { await loadSavedSigs(); } catch (e) { console.error(e); }
+  try { lastSession = await DB.get(); } catch (e) { lastSession = null; }
   S.isSample = false; S.docName = ''; setTool('select'); rebuild();
 }
 /* find, copy/paste */

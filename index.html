@@ -2,8 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Pagewright</title>
 <script>try{var t=localStorage.getItem('pagewright.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@600&family=Allura&display=swap">
+<link rel="stylesheet" href="css/fonts.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%93%84%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -131,10 +130,10 @@
 <div class="busy" id="busy" hidden><div><span class="spin"></span><span id="busyText">Working…</span></div></div>
 <div class="toast" id="toast" hidden></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf.worker.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
 <script>(function(){var m=[];if(!window.pdfjsLib)m.push('PDF.js');if(!window.PDFLib)m.push('pdf-lib');if(!window.JSZip)m.push('JSZip');if(!m.length)return;var d=document.createElement('div');d.style.cssText='position:fixed;inset:0;display:grid;place-items:center;background:var(--desk);color:var(--fg);padding:24px;text-align:center;z-index:99;font:15px/1.5 system-ui,sans-serif';d.innerHTML='<div style="max-width:380px"><h2 style="margin:0 0 8px">Pagewright could not start</h2><p>These libraries failed to load: '+m.join(', ')+'. Check your connection or any content blocker, then try again.</p><button onclick="location.reload()" style="padding:8px 16px;font:inherit;border-radius:8px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer">Reload</button></div>';document.body.appendChild(d)})()</script>
 <script src="js/app.js"></script>
 </body></html>

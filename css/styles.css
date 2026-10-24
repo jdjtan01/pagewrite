@@ -224,3 +224,7 @@ textarea.inp{height:auto;min-height:64px;padding:6px 8px;resize:vertical}
   .tool{min-width:48px;font-size:10.5px}
   .fmts{grid-template-columns:1fr}
 }
+
+.t-shape{min-height:8px}.t-shape svg{width:100%;height:100%;display:block}
+.empty .dz .btnrow{flex-wrap:wrap}
+.stage[data-tool="shape"] .annotlayer,.stage[data-tool="stamp"] .annotlayer,.stage[data-tool="redact"] .annotlayer{pointer-events:auto;cursor:crosshair;touch-action:none}

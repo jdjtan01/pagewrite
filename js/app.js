@@ -696,7 +696,7 @@ function fieldEl(d, a) {
 const pad = $('#padCanvas'); let padCtx, padInk = '#111111', padDirty = false, sigTab = 'draw', typedFont = 0;
 const SIG_FONTS = ['"Caveat", cursive', '"Allura", cursive'];
 function openSig() {
-  $('#sigModal').hidden = false;
+  $('#sigModal').hidden = false; renderSavedSigs();
   const r = pad.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
   pad.width = r.width * dpr; pad.height = r.height * dpr; padCtx = pad.getContext('2d'); padCtx.scale(dpr, dpr);
   padCtx.lineCap = 'round'; padCtx.lineJoin = 'round'; padDirty = false;
@@ -757,17 +757,30 @@ $('#sigUse').onclick = async () => {
 async function finishSig(id) {
   if ($('#sigRemember').checked) {
     S.sigs.unshift(id); S.sigs = S.sigs.slice(0, 6);
-    try {
-      const all = []; for (const s of S.sigs) { const im = S.imgs[s]; all.push(await blobToDataUrl(new Blob([im.bytes], { type: 'image/png' }))); }
-      localStorage.setItem('inkwell.sigs', JSON.stringify(all));
-    } catch (e) {}
+    await persistSigs();
   }
   closeModals(); S.pending = { img: id, sig: true }; setTool('place');
 }
 const blobToDataUrl = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
+async function persistSigs() {
+  try {
+    const all = []; for (const id of S.sigs) { const im = S.imgs[id]; all.push(await blobToDataUrl(new Blob([im.bytes], { type: 'image/png' }))); }
+    localStorage.setItem('pagewright.sigs', JSON.stringify(all));
+  } catch (e) {}
+}
+function renderSavedSigs() {
+  const w = $('#savedSigs'); $('#savedSigsWrap').hidden = !S.sigs.length; w.innerHTML = '';
+  S.sigs.forEach(id => {
+    const im = S.imgs[id], b = el('div', 'ssig');
+    b.innerHTML = `<button class="use" title="Use this signature"><img alt="Saved signature" src="${im.url}"></button><button class="del" title="Delete this saved signature" aria-label="Delete saved signature">\u2715</button>`;
+    b.querySelector('.use').onclick = () => { closeModals(); S.pending = { img: id, sig: true }; setTool('place'); };
+    b.querySelector('.del').onclick = async () => { S.sigs = S.sigs.filter(x => x !== id); await persistSigs(); renderSavedSigs(); };
+    w.append(b);
+  });
+}
 async function loadSavedSigs() {
   try {
-    const arr = JSON.parse(localStorage.getItem('inkwell.sigs') || '[]');
+    const arr = JSON.parse(localStorage.getItem('pagewright.sigs') || localStorage.getItem('inkwell.sigs') || '[]');
     for (const du of arr) { const bytes = dataUrlBytes(du); const im = await loadImg(du); S.sigs.push(addImg(bytes, 'png', im.naturalWidth, im.naturalHeight)); }
   } catch (e) {}
 }
@@ -1042,6 +1055,7 @@ $('#bInspClose').onclick = closeDrawers; $('#scrim').onclick = closeDrawers;
 /* ---------- OCR ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('blocked')); document.head.append(s); }); }
 const withTimeout = (pr, ms) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+const absUrl = u => new URL(u, location.href).href;
 async function runOCR() {
   const targets = [];
   for (const p of S.pages) { const tc = await getText(p); if (!tc.items.some(i => i.str && i.str.trim()) && !(p.ocr && p.ocr.length)) targets.push(p); }
@@ -1049,8 +1063,8 @@ async function runOCR() {
   busy('Loading text recognition…');
   let worker;
   try {
-    if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js');
-    worker = await withTimeout(Tesseract.createWorker('eng', 1, { workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/worker.min.js', corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0' }), 45000);
+    if (!window.Tesseract) await loadScript('vendor/tesseract/tesseract.min.js');
+    worker = await withTimeout(Tesseract.createWorker('eng', 1, { workerPath: absUrl('vendor/tesseract/worker.min.js'), corePath: absUrl('vendor/tesseract/core'), langPath: absUrl('vendor/tesseract/lang') }), 45000);
     checkpoint();
     for (let k = 0; k < targets.length; k++) {
       const p = targets[k]; busy(`Reading page ${S.pages.indexOf(p) + 1} (${k + 1} of ${targets.length})…`);

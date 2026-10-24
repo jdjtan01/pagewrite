@@ -145,3 +145,4 @@ free programs, and that you know you can do these things.
   To protect your rights, we need to prevent others from denying you
 these rights or asking you to surrender the rights.  Therefore, you have
 
+===== tesseract.js (Apache-2.0), tesseract.js-core (Apache-2.0), English language data (Apache-2.0) =====

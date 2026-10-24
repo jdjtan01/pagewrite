@@ -11,11 +11,12 @@ index.html       page structure
 css/styles.css   styles (light, dark and violet themes)
 css/fonts.css    @font-face rules for the bundled fonts
 js/app.js        application code
-vendor/          PDF.js, pdf-lib and JSZip (with their licences)
+vendor/          PDF.js, pdf-lib, JSZip and Tesseract (OCR), with licences
+icons/, manifest.webmanifest, sw.js   installable, offline-capable app
 fonts/           bundled fonts (SIL Open Font License)
 ```
 
-Everything is bundled, so the site works with no external requests and can run offline once the files are loaded.
+Everything is bundled, including the OCR engine and English language data, so the site makes no requests to other domains. After the first visit it works offline, and it can be installed from the browser's menu.
 
 ## Run locally
 
@@ -42,3 +43,15 @@ python3 -m http.server 8000
 
 - Arial, Times New Roman and Courier New are exported using the matching standard PDF fonts (Helvetica, Times, Courier), which have the same letter widths.
 - Saved signatures and the theme choice are stored in the browser's local storage.
+
+## Privacy
+
+Documents are processed entirely in the browser tab and are never uploaded. Autosave data, saved signatures and the theme choice stay in your browser's own storage. Clearing site data removes them.
+
+## Updating the site
+
+`sw.js` serves files from a cache and refreshes them in the background, so a new deploy appears on the next visit after the one that loads it. If you remove or rename a file, change the `CACHE` name at the top of `sw.js`.
+
+## Licence
+
+The app code is under the MIT licence (see `LICENSE`; put your own name in the copyright line). Bundled libraries and fonts keep their own licences: see `vendor/LICENSES.txt` and the font notes in `css/fonts.css`.

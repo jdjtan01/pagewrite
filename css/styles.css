@@ -228,3 +228,4 @@ textarea.inp{height:auto;min-height:64px;padding:6px 8px;resize:vertical}
 .t-shape{min-height:8px}.t-shape svg{width:100%;height:100%;display:block}
 .empty .dz .btnrow{flex-wrap:wrap}
 .stage[data-tool="shape"] .annotlayer,.stage[data-tool="stamp"] .annotlayer,.stage[data-tool="redact"] .annotlayer{pointer-events:auto;cursor:crosshair;touch-action:none}
+.savedsigs{display:flex;gap:10px;flex-wrap:wrap}.ssig{position:relative;border:1px solid var(--line);border-radius:8px;background:#fff}.ssig .use{display:block;width:120px;height:52px;padding:6px;border-radius:8px}.ssig img{max-width:100%;max-height:100%;object-fit:contain;display:block;margin:auto}.ssig .del{position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:var(--fg);color:var(--desk);font-size:10px;line-height:1}
